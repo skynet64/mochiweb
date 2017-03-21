@@ -492,9 +492,9 @@ parse_post({?MODULE, [_Conn, _Method, _RawPath, _Version, _Headers]}=THIS) ->
                              case get_primary_header_value("content-type",THIS) of
                                  "application/x-www-form-urlencoded" ++ _ ->
                                      mochiweb_util:parse_qs(Binary);
-                                 "application/json" ++ _ ->
-                                     {struct, Binary2} = mochijson2:decode(Binary),
-                                     Binary2;
+                                 "application/json" ++ _ -> %% TODO:???
+                                     {struct, Json} = mochijson2:decode(Binary),
+                                     Json;
                                  _ ->
                                      []
                              end
