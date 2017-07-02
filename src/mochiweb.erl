@@ -48,13 +48,11 @@ stop_http(Proto, ListenOn) -> esockd:close(Proto, ListenOn).
 
 
 %% @doc Restart HTTP Listener
--spec(restart_http(esockd:listen_on()) -> ok).
+-spec(restart_http(esockd:listen_on()) -> {ok, pid()} | {error, any()}).
 restart_http(ListenOn) -> restart_http(http, ListenOn).
 
--spec(restart_http(atom(), esockd:listen_on()) -> ok).
+-spec(restart_http(atom(), esockd:listen_on()) -> {ok, pid()} | {error, any()}).
 restart_http(Proto, ListenOn) -> esockd:reopen(Proto, ListenOn).
-
-
 
 %% @private
 merge_opts(Defaults, Options) ->
