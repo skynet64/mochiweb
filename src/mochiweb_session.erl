@@ -1,4 +1,23 @@
 %% @author Asier Azkuenaga Batiz <asier@zebixe.com>
+%% @copyright 2013 Mochi Media, Inc.
+%%
+%% Permission is hereby granted, free of charge, to any person obtaining a
+%% copy of this software and associated documentation files (the "Software"),
+%% to deal in the Software without restriction, including without limitation
+%% the rights to use, copy, modify, merge, publish, distribute, sublicense,
+%% and/or sell copies of the Software, and to permit persons to whom the
+%% Software is furnished to do so, subject to the following conditions:
+%%
+%% The above copyright notice and this permission notice shall be included in
+%% all copies or substantial portions of the Software.
+%%
+%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+%% THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+%% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+%% DEALINGS IN THE SOFTWARE.
 
 %% @doc HTTP Cookie session. Note that the expiration time travels unencrypted
 %% as far as this module is concerned. In order to achieve more security,
@@ -103,7 +122,7 @@ ensure_binary(L) when is_list(L) ->
 -ifdef(crypto_compatibility).
 -spec encrypt_data(binary(), binary()) -> binary().
 encrypt_data(Data, Key) ->
-    IV = crypto:rand_bytes(16),
+    IV = crypto:strong_rand_bytes(16),
     Crypt = crypto:aes_cfb_128_encrypt(Key, IV, Data),
     <<IV/binary, Crypt/binary>>.
 
@@ -122,7 +141,7 @@ gen_hmac(ExpirationTime, Data, SessionKey, Key) ->
 -else.
 -spec encrypt_data(binary(), binary()) -> binary().
 encrypt_data(Data, Key) ->
-    IV = crypto:rand_bytes(16),
+    IV = crypto:strong_rand_bytes(16),
     Crypt = crypto:block_encrypt(aes_cfb128, Key, IV, Data),
     <<IV/binary, Crypt/binary>>.
 
@@ -140,3 +159,71 @@ gen_hmac(ExpirationTime, Data, SessionKey, Key) ->
 
 -endif.
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+generate_check_session_cookie_test_() ->
+    {setup,
+     fun setup_server_key/0,
+     fun generate_check_session_cookie/1}.
+
+setup_server_key() ->
+    crypto:start(),
+    ["adfasdfasfs",30000].
+
+generate_check_session_cookie([ServerKey, TS]) ->
+    Id = fun (A) -> A end,
+    TSFuture = TS + 1000,
+    TSPast = TS - 1,
+    [?_assertEqual(
+        {true, [TSFuture, "alice"]},
+        check_session_cookie(
+          generate_session_data(TSFuture, "alice", Id, ServerKey),
+          TS, Id, ServerKey)),
+     ?_assertEqual(
+        {true, [TSFuture, "alice and"]},
+        check_session_cookie(
+          generate_session_data(TSFuture, "alice and", Id, ServerKey),
+          TS, Id, ServerKey)),
+     ?_assertEqual(
+        {true, [TSFuture, "alice and"]},
+        check_session_cookie(
+          generate_session_data(TSFuture, "alice and", Id, ServerKey),
+          TS, Id,ServerKey)),
+     ?_assertEqual(
+        {true, [TSFuture, "alice and bob"]},
+        check_session_cookie(
+          generate_session_data(TSFuture, "alice and bob",
+                                Id, ServerKey),
+          TS, Id, ServerKey)),
+     ?_assertEqual(
+        {true, [TSFuture, "alice jlkjfkjsdfg sdkfjgldsjgl"]},
+        check_session_cookie(
+          generate_session_data(TSFuture, "alice jlkjfkjsdfg sdkfjgldsjgl",
+                                Id, ServerKey),
+          TS, Id, ServerKey)),
+     ?_assertEqual(
+        {true, [TSFuture, "alice .'¡'ç+-$%/(&\""]},
+        check_session_cookie(
+          generate_session_data(TSFuture, "alice .'¡'ç+-$%/(&\""
+                                ,Id, ServerKey),
+          TS, Id, ServerKey)),
+     ?_assertEqual(
+        {true,[TSFuture,"alice456689875"]},
+        check_session_cookie(
+          generate_session_data(TSFuture, ["alice","456689875"],
+                                Id, ServerKey),
+          TS, Id, ServerKey)),
+     ?_assertError(
+        function_clause,
+        check_session_cookie(
+          generate_session_data(TSFuture, {tuple,one},
+                                Id, ServerKey),
+          TS, Id,ServerKey)),
+     ?_assertEqual(
+        {false, [TSPast, "bob"]},
+        check_session_cookie(
+          generate_session_data(TSPast, "bob", Id,ServerKey),
+          TS, Id, ServerKey))
+    ].
+-endif.

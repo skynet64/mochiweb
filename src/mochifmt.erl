@@ -1,5 +1,23 @@
 %% @author Bob Ippolito <bob@mochimedia.com>
 %% @copyright 2008 Mochi Media, Inc.
+%%
+%% Permission is hereby granted, free of charge, to any person obtaining a
+%% copy of this software and associated documentation files (the "Software"),
+%% to deal in the Software without restriction, including without limitation
+%% the rights to use, copy, modify, merge, publish, distribute, sublicense,
+%% and/or sell copies of the Software, and to permit persons to whom the
+%% Software is furnished to do so, subject to the following conditions:
+%%
+%% The above copyright notice and this permission notice shall be included in
+%% all copies or substantial portions of the Software.
+%%
+%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+%% THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+%% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+%% DEALINGS IN THE SOFTWARE.
 
 %% @doc String Formatting for Erlang, inspired by Python 2.6
 %%      (<a href="http://www.python.org/dev/peps/pep-3101/">PEP 3101</a>).
@@ -365,3 +383,61 @@ parse_std_conversion([$. | Spec], Acc) ->
 parse_std_conversion([Type], Acc) ->
     parse_std_conversion("", Acc#conversion{ctype=ctype(Type)}).
 
+
+%%
+%% Tests
+%%
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+tokenize_test() ->
+    {?MODULE, [{raw, "ABC"}]} = tokenize("ABC"),
+    {?MODULE, [{format, {"0", "", ""}}]} = tokenize("{0}"),
+    {?MODULE, [{raw, "ABC"}, {format, {"1", "", ""}}, {raw, "DEF"}]} =
+        tokenize("ABC{1}DEF"),
+    ok.
+
+format_test() ->
+    <<"  -4">> = bformat("{0:4}", [-4]),
+    <<"   4">> = bformat("{0:4}", [4]),
+    <<"   4">> = bformat("{0:{0}}", [4]),
+    <<"4   ">> = bformat("{0:4}", ["4"]),
+    <<"4   ">> = bformat("{0:{0}}", ["4"]),
+    <<"1.2yoDEF">> = bformat("{2}{0}{1}{3}", {yo, "DE", 1.2, <<"F">>}),
+    <<"cafebabe">> = bformat("{0:x}", {16#cafebabe}),
+    <<"CAFEBABE">> = bformat("{0:X}", {16#cafebabe}),
+    <<"CAFEBABE">> = bformat("{0:X}", {16#cafebabe}),
+    <<"755">> = bformat("{0:o}", {8#755}),
+    <<"a">> = bformat("{0:c}", {97}),
+    %% Horizontal ellipsis
+    <<226, 128, 166>> = bformat("{0:c}", {16#2026}),
+    <<"11">> = bformat("{0:b}", {3}),
+    <<"11">> = bformat("{0:b}", [3]),
+    <<"11">> = bformat("{three:b}", [{three, 3}]),
+    <<"11">> = bformat("{three:b}", [{"three", 3}]),
+    <<"11">> = bformat("{three:b}", [{<<"three">>, 3}]),
+    <<"\"foo\"">> = bformat("{0!r}", {"foo"}),
+    <<"2008-5-4">> = bformat("{0.0}-{0.1}-{0.2}", {{2008,5,4}}),
+    <<"2008-05-04">> = bformat("{0.0:04}-{0.1:02}-{0.2:02}", {{2008,5,4}}),
+    <<"foo6bar-6">> = bformat("foo{1}{0}-{1}", {bar, 6}),
+    <<"-'atom test'-">> = bformat("-{arg!r}-", [{arg, 'atom test'}]),
+    <<"2008-05-04">> = bformat("{0.0:0{1.0}}-{0.1:0{1.1}}-{0.2:0{1.2}}",
+                               {{2008,5,4}, {4, 2, 2}}),
+    ok.
+
+std_test() ->
+    M = mochifmt_std:new(),
+    <<"01">> = bformat("{0}{1}", [0, 1], M),
+    ok.
+
+records_test() ->
+    M = mochifmt_records:new([{conversion, record_info(fields, conversion)}]),
+    R = #conversion{length=long, precision=hard, sign=peace},
+    long = M:get_value("length", R),
+    hard = M:get_value("precision", R),
+    peace = M:get_value("sign", R),
+    <<"long hard">> = bformat("{length} {precision}", R, M),
+    <<"long hard">> = bformat("{0.length} {0.precision}", [R], M),
+    ok.
+
+-endif.

@@ -1,5 +1,23 @@
 %% @author Bob Ippolito <bob@mochimedia.com>
 %% @copyright 2010 Mochi Media, Inc.
+%%
+%% Permission is hereby granted, free of charge, to any person obtaining a
+%% copy of this software and associated documentation files (the "Software"),
+%% to deal in the Software without restriction, including without limitation
+%% the rights to use, copy, modify, merge, publish, distribute, sublicense,
+%% and/or sell copies of the Software, and to permit persons to whom the
+%% Software is furnished to do so, subject to the following conditions:
+%%
+%% The above copyright notice and this permission notice shall be included in
+%% all copies or substantial portions of the Software.
+%%
+%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+%% THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+%% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+%% DEALINGS IN THE SOFTWARE.
 
 %% @doc Write newline delimited log files, ensuring that if a truncated
 %%      entry is found on log open then it is fixed before writing. Uses
@@ -54,3 +72,87 @@ find_last_newline(FD, Location) ->
 	    find_last_newline(FD, Location - 1)
     end.
 
+%%
+%% Tests
+%%
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+name_test() ->
+    D = mochitemp:mkdtemp(),
+    FileName = filename:join(D, "open_close_test.log"),
+    H = open(FileName),
+    ?assertEqual(
+       FileName,
+       name(H)),
+    close(H),
+    file:delete(FileName),
+    file:del_dir(D),
+    ok.
+
+open_close_test() ->
+    D = mochitemp:mkdtemp(),
+    FileName = filename:join(D, "open_close_test.log"),
+    OpenClose = fun () ->
+                        H = open(FileName),
+                        ?assertEqual(
+                           true,
+                           filelib:is_file(FileName)),
+                        ok = close(H),
+                        ?assertEqual(
+                           {ok, <<>>},
+                           file:read_file(FileName)),
+                        ok
+                end,
+    OpenClose(),
+    OpenClose(),
+    file:delete(FileName),
+    file:del_dir(D),
+    ok.
+
+write_test() ->
+    D = mochitemp:mkdtemp(),
+    FileName = filename:join(D, "write_test.log"),
+    F = fun () ->
+                H = open(FileName),
+                write(H, "test line"),
+                close(H),
+                ok
+        end,
+    F(),
+    ?assertEqual(
+       {ok, <<"test line\n">>},
+       file:read_file(FileName)),
+    F(),
+    ?assertEqual(
+       {ok, <<"test line\ntest line\n">>},
+       file:read_file(FileName)),
+    file:delete(FileName),
+    file:del_dir(D),
+    ok.
+
+fix_log_test() ->
+    D = mochitemp:mkdtemp(),
+    FileName = filename:join(D, "write_test.log"),
+    file:write_file(FileName, <<"first line good\nsecond line bad">>),
+    F = fun () ->
+                H = open(FileName),
+                write(H, "test line"),
+                close(H),
+                ok
+        end,
+    F(),
+    ?assertEqual(
+       {ok, <<"first line good\ntest line\n">>},
+       file:read_file(FileName)),
+    file:write_file(FileName, <<"first line bad">>),
+    F(),
+    ?assertEqual(
+       {ok, <<"test line\n">>},
+       file:read_file(FileName)),
+    F(),
+    ?assertEqual(
+       {ok, <<"test line\ntest line\n">>},
+       file:read_file(FileName)),
+    ok.
+
+-endif.
