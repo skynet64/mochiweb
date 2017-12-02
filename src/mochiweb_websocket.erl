@@ -31,7 +31,7 @@
 -compile(export_all).
 -endif.
 loop(Conn, Body, State, WsVersion, ReplyChannel) ->
-    ok = Conn:setopts([{packet, 0}, {active, once}]),
+    ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, 0}, {active, once}])),
     proc_lib:hibernate(?MODULE, request,
                        [Conn, Body, State, WsVersion, ReplyChannel]).
 
@@ -257,7 +257,7 @@ parse_hybi_frames(Conn, <<_Fin:1,
     receive_more_frames(Conn, PartFrame, Acc).
 
 receive_more_frames(Conn, PartFrame, Acc) ->
-    ok = Conn:setopts([{packet, 0}, {active, once}]),
+    ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, 0}, {active, once}])),
     receive
         {tcp_closed, _} ->
             Conn:close(),

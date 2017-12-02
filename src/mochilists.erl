@@ -1,5 +1,23 @@
 %% @copyright Copyright (c) 2010 Mochi Media, Inc.
 %% @author David Reid <dreid@mochimedia.com>
+%%
+%% Permission is hereby granted, free of charge, to any person obtaining a
+%% copy of this software and associated documentation files (the "Software"),
+%% to deal in the Software without restriction, including without limitation
+%% the rights to use, copy, modify, merge, publish, distribute, sublicense,
+%% and/or sell copies of the Software, and to permit persons to whom the
+%% Software is furnished to do so, subject to the following conditions:
+%%
+%% The above copyright notice and this permission notice shall be included in
+%% all copies or substantial portions of the Software.
+%%
+%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+%% THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+%% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+%% DEALINGS IN THE SOFTWARE.
 
 %% @doc Utility functions for dealing with proplists.
 
@@ -51,4 +69,54 @@ get_value(Key, Proplist, Default) ->
         {Key, Value} ->
             Value
     end.
+
+%%
+%% Tests
+%%
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+set_defaults_test() ->
+    ?assertEqual(
+       [{k, v}],
+       set_defaults([{k, v}], [])),
+    ?assertEqual(
+       [{k, v}],
+       set_defaults([{k, vee}], [{k, v}])),
+    ?assertEqual(
+       lists:sort([{kay, vee}, {k, v}]),
+       lists:sort(set_defaults([{k, vee}, {kay, vee}], [{k, v}]))),
+    ok.
+
+set_default_test() ->
+    ?assertEqual(
+       [{k, v}],
+       set_default({k, v}, [])),
+    ?assertEqual(
+       [{k, v}],
+       set_default({k, vee}, [{k, v}])),
+    ok.
+
+get_value_test() ->
+    ?assertEqual(
+       undefined,
+       get_value(foo, [])),
+    ?assertEqual(
+       undefined,
+       get_value(foo, [{bar, baz}])),
+    ?assertEqual(
+       bar,
+       get_value(foo, [{foo, bar}])),
+    ?assertEqual(
+       default,
+       get_value(foo, [], default)),
+    ?assertEqual(
+       default,
+       get_value(foo, [{bar, baz}], default)),
+    ?assertEqual(
+       bar,
+       get_value(foo, [{foo, bar}], default)),
+    ok.
+
+-endif.
 
