@@ -37,6 +37,7 @@
     {packet, raw},
     {backlog, 1024}, %%128?
     {recbuf, ?RECBUF_SIZE},
+    {send_timeout, 15000},
     {exit_on_close, false},
     {nodelay, false}
 ]).
