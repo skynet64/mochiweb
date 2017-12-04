@@ -43,7 +43,7 @@ range_test() ->
     ?assertEqual([{none, 20}], parse_range_request("bytes=-20")),
 
     %% trivial single range
-    ?assertEqual(undefined, parse_range_request("bytes=0-")),
+    ?assertEqual([{0, none}], parse_range_request("bytes=0-")),
 
     %% invalid, single ranges
     ?assertEqual(fail, parse_range_request("")),
