@@ -313,13 +313,15 @@ find_boundary(Prefix, Data) ->
 %%
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("esockd/include/esockd.hrl").
 
-ssl_cert_opts() ->
-    EbinDir = filename:dirname(code:which(?MODULE)),
-    CertDir = filename:join([EbinDir, "..", "support", "test-materials"]),
-    CertFile = filename:join(CertDir, "test_ssl_cert.pem"),
-    KeyFile = filename:join(CertDir, "test_ssl_key.pem"),
-    [{certfile, CertFile}, {keyfile, KeyFile}].
+-ifdef(sni_unavailable).
+ssl_client_opts(Opts) ->
+  [{ssl_imp, new} | Opts].
+-else.
+ssl_client_opts(Opts) ->
+  [{server_name_indication, disable} | Opts].
+-endif.
 
 with_socket_server(Transport, ServerFun, ClientFun) ->
     ServerOpts0 = [{ip, "127.0.0.1"}, {port, 0}, {loop, ServerFun}],
@@ -327,7 +329,7 @@ with_socket_server(Transport, ServerFun, ClientFun) ->
         plain ->
             ServerOpts0;
         ssl ->
-            ServerOpts0 ++ [{ssl, true}, {ssl_opts, ssl_cert_opts()}]
+            ServerOpts0 ++ [{ssl, true}, {ssl_opts, mochiweb_test_util:ssl_cert_opts()}]
     end,
     {ok, Server} = mochiweb_socket_server:start_link(ServerOpts),
     Port = mochiweb_socket_server:get(Server, port),
@@ -336,16 +338,17 @@ with_socket_server(Transport, ServerFun, ClientFun) ->
         plain ->
             gen_tcp:connect("127.0.0.1", Port, ClientOpts);
         ssl ->
-            ClientOpts1 = mochiweb_test_util:ssl_client_opts(ClientOpts),
+            ClientOpts1 = ssl_client_opts(ClientOpts),
             {ok, SslSocket} = ssl:connect("127.0.0.1", Port, ClientOpts1),
-            {ok, {ssl, SslSocket}}
+            {ok, #ssl_socket{ssl = SslSocket}}
     end,
     Res = (catch ClientFun(Client)),
     mochiweb_socket_server:stop(Server),
     Res.
 
 fake_request(Socket, ContentType, Length) ->
-    mochiweb_request:new(Socket,
+    Conn = esockd_connection:new(Socket, fun(Sock) -> {ok, Sock} end, []),
+    mochiweb_request:new(Conn,
                          'POST',
                          "/multipart",
                          {1,1},
