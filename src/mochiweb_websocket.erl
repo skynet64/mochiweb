@@ -87,7 +87,7 @@ upgrade_connection(Req, Body) ->
         {Version, Response} ->
             Req:respond(Response),
             Conn = Req:get(connection),
-            ReplyChannel = fun (Reply) ->
+            ReplyChannel = fun(Reply) ->
                 ?MODULE:send(Conn, Reply, Version)
             end,
             Reentry = fun (State) ->
