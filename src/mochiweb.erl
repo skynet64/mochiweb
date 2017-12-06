@@ -35,8 +35,10 @@
     binary,
     {reuseaddr, true},
     {packet, raw},
-    {backlog, 1024}, %%128?
+    {backlog, 1024},
     {recbuf, ?RECBUF_SIZE},
+    {send_timeout, 15000},
+    {send_timeout_close, true},
     {exit_on_close, false},
     {nodelay, false}
 ]).

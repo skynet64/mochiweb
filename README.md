@@ -12,3 +12,4 @@ Integrate with eSockd(Non-blocking TCP/SSL Server)
 
 Improve WebSocket Support
 
+# emqx-plugin-skel

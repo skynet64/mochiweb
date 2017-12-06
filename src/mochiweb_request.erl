@@ -197,10 +197,9 @@ dump({?MODULE, [Conn, Method, RawPath, Version, Headers]}) ->
 %% @doc Send data over the socket.
 send(Data, {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
     case Conn:send(Data) of
-        ok ->
-            ok;
-        _ ->
-            exit(normal)
+        ok -> ok;
+        {error, Reason} ->
+            exit({shutdown, Reason})
     end.
 
 %% @spec recv(integer(), request()) -> binary()
