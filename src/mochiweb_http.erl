@@ -44,34 +44,34 @@ r15b_workaround() -> false.
 start_link(Conn, Callback) ->
     {ok, spawn_link(?MODULE, init, [Conn, Callback])}.
 
-init(Conn, Callback) ->
-    {ok, NewConn} = Conn:wait(),
+init({Conn,Args}, Callback) ->
+    {ok, NewConn} = Conn:wait({Conn,Args}),
 	loop(NewConn, Callback).
 
-loop(Conn, Callback) ->
-    ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, http}])),
-    request(Conn, Callback).
+loop({Conn,Args}, Callback) ->
+    ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, http}],{Conn,Args})),
+    request({Conn,Args}, Callback).
 
-request(Conn, Callback) ->
-    ok = mochiweb_util:exit_if_closed(Conn:setopts([{active, once}])),
+request({Conn,Args}, Callback) ->
+    ok = mochiweb_util:exit_if_closed(Conn:setopts([{active, once}],{Conn,Args})),
     receive
         {Protocol, _, {http_request, Method, Path, Version}} when Protocol == http orelse Protocol == ssl ->
-            ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, httph}])),
-            headers(Conn, {Method, Path, Version}, [], Callback, 0);
+            ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, httph}],{Conn,Args})),
+            headers({Conn,Args}, {Method, Path, Version}, [], Callback, 0);
         {Protocol, _, {http_error, "\r\n"}} when Protocol == http orelse Protocol == ssl ->
-            request(Conn, Callback);
+            request({Conn,Args}, Callback);
         {Protocol, _, {http_error, "\n"}} when Protocol == http orelse Protocol == ssl ->
-            request(Conn, Callback);
+            request({Conn,Args}, Callback);
         {tcp_closed, _} ->
-            Conn:close(),
+            Conn:close({Conn,Args}),
             exit(normal);
         {ssl_closed, _} ->
-            Conn:close(),
+            Conn:close({Conn,Args}),
             exit(normal);
         Other ->
-            handle_invalid_msg_request(Other, Conn)
+            handle_invalid_msg_request(Other, {Conn,Args})
     after ?REQUEST_RECV_TIMEOUT ->
-        Conn:close(),
+        Conn:close({Conn,Args}),
         exit(normal)
     end.
 
@@ -80,27 +80,27 @@ reentry(Conn, Callback) ->
             ?MODULE:after_response(Conn, Callback, Req)
     end.
 
-headers(Conn, Request, Headers, _Callback, ?MAX_HEADERS) ->
+headers({Conn,Args}, Request, Headers, _Callback, ?MAX_HEADERS) ->
     %% Too many headers sent, bad request.
-    ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, raw}])),
+    ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, raw}],{Conn,Args})),
     handle_invalid_request(Conn, Request, Headers);
 
-headers(Conn, Request, Headers, Callback, HeaderCount) ->
-    ok = mochiweb_util:exit_if_closed(Conn:setopts([{active, once}])),
+headers({Conn,Args}, Request, Headers, Callback, HeaderCount) ->
+    ok = mochiweb_util:exit_if_closed(Conn:setopts([{active, once}],{Conn,Args})),
     receive
         {Protocol, _, http_eoh} when Protocol == http orelse Protocol == ssl ->
-            Req = new_request(Conn, Request, Headers),
+            Req = new_request({Conn,Args}, Request, Headers),
             callback(Callback, Req),
-            ?MODULE:after_response(Conn, Callback, Req);
+            ?MODULE:after_response({Conn,Args}, Callback, Req);
         {Protocol, _, {http_header, _, Name, _, Value}} when Protocol == http orelse Protocol == ssl ->
-            headers(Conn, Request, [{Name, Value} | Headers], Callback, 1 + HeaderCount);
+            headers({Conn,Args}, Request, [{Name, Value} | Headers], Callback, 1 + HeaderCount);
         {tcp_closed, _} ->
-            Conn:close(),
+            Conn:close({Conn,Args}),
             exit(normal);
         Other ->
-            handle_invalid_msg_request(Other, Conn, Request, Headers)
+            handle_invalid_msg_request(Other, {Conn,Args}, Request, Headers)
     after ?HEADERS_RECV_TIMEOUT ->
-        Conn:close(),
+        Conn:close({Conn,Args}),
         exit(normal)
     end.
 
@@ -110,36 +110,36 @@ handle_invalid_msg_request(Msg, Conn) ->
     handle_invalid_msg_request(Msg, Conn, {'GET', {abs_path, "/"}, {0,9}}, []).
 
 -spec handle_invalid_msg_request(term(), esockd_connection:connection(), term(), term()) -> no_return().
-handle_invalid_msg_request(Msg, Conn, Request, RevHeaders) ->
+handle_invalid_msg_request(Msg, {Conn,Args}, Request, RevHeaders) ->
     case {Msg, r15b_workaround()} of
         {{tcp_error,_,emsgsize}, true} ->
             %% R15B02 returns this then closes the socket, so close and exit
-            Conn:close(),
+            Conn:close({Conn,Args}),
             exit(normal);
         _ ->
-            handle_invalid_request(Conn, Request, RevHeaders)
+            handle_invalid_request({Conn,Args}, Request, RevHeaders)
     end.
 
 -spec handle_invalid_request(esockd_connection:connection(), term(), term()) -> no_return().
-handle_invalid_request(Conn, Request, RevHeaders) ->
-    Req = new_request(Conn, Request, RevHeaders),
+handle_invalid_request({Conn,Args}, Request, RevHeaders) ->
+    Req = new_request({Conn,Args}, Request, RevHeaders),
     Req:respond({400, [], []}),
-    Conn:close(),
+    Conn:close({Conn,Args}),
     exit(normal).
 
-new_request(Conn, Request, RevHeaders) ->
-    ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, raw}])),
-    mochiweb:new_request({Conn, Request, lists:reverse(RevHeaders)}).
+new_request({Conn,Args}, Request, RevHeaders) ->
+    ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, raw}],{Conn,Args})),
+    mochiweb:new_request({{Conn,Args}, Request, lists:reverse(RevHeaders)}).
 
-after_response(Conn, Callback, Req) ->
-    case Req:should_close() of
+after_response({Conn,Args}, Callback, {Req,A}) ->
+    case Req:should_close({Req,A}) of
         true ->
-            Conn:close(),
+            Conn:close({Conn,Args}),
             exit(normal);
         false ->
-            Req:cleanup(),
+            Req:cleanup({Req,A}),
             erlang:garbage_collect(),
-            ?MODULE:loop(Conn, Callback)
+            ?MODULE:loop({Conn,Args}, Callback)
     end.
 
 parse_range_request(RawRange) when is_list(RawRange) ->
@@ -185,7 +185,7 @@ callback({M, F}, Req) ->
     M:F(Req);
 callback(Callback, Req) when is_function(Callback) ->
     Callback(Req).
-    
+
 %%
 %% Tests
 %%
