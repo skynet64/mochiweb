@@ -30,39 +30,39 @@
 -ifdef(TEST).
 -compile(export_all).
 -endif.
-loop(Conn, Body, State, WsVersion, ReplyChannel) ->
-    ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, 0}, {active, once}])),
+loop({C,_} = Conn, Body, State, WsVersion, ReplyChannel) ->
+    ok = mochiweb_util:exit_if_closed(C:setopts([{packet, 0}, {active, once}], Conn)),
     proc_lib:hibernate(?MODULE, request,
                        [Conn, Body, State, WsVersion, ReplyChannel]).
 
-request(Conn, Body, State, WsVersion, ReplyChannel) ->
+request({C,_} = Conn, Body, State, WsVersion, ReplyChannel) ->
     receive
         {tcp_closed, _} ->
-            Conn:close(),
+            C:close(Conn),
             exit(normal);
         {ssl_closed, _} ->
-            Conn:close(),
+            C:close(Conn),
             exit(normal);
         {tcp_error, _, _} ->
-            Conn:close(),
+            C:close(Conn),
             exit(normal);
         {ssl_error, _, _Reason} ->
-            Conn:close(),
+            C:close(Conn),
             exit(normal);
         {TcpOrSsl, _, WsFrames} when (TcpOrSsl =:= tcp) orelse (TcpOrSsl =:= ssl) ->
             case parse_frames(WsVersion, WsFrames, Conn) of
                 close ->
-                    Conn:close(),
+                    C:close(Conn),
                     exit(normal);
                 error ->
-                    Conn:close(),
+                    C:close(Conn),
                     exit(normal);
                 Payload ->
                     NewState = call_body(Body, Payload, State, ReplyChannel),
                     loop(Conn, Body, NewState, WsVersion, ReplyChannel)
             end;
         _ ->
-            Conn:close(),
+            C:close(Conn),
             exit(normal)
     end.
 
@@ -73,20 +73,20 @@ call_body({M, F}, Payload, State, ReplyChannel) ->
 call_body(Body, Payload, State, ReplyChannel) ->
     Body(Payload, State, ReplyChannel).
 
-send(Conn, {Type, Payload} = _Reply, hybi) ->
+send({C,_} = Conn, {Type, Payload} = _Reply, hybi) ->
     Prefix = <<1:1, 0:3, (payload_type(Type)):4, (payload_length(iolist_size(Payload)))/binary>>,
-    Conn:send([Prefix, Payload]);
-send(Conn, {_Type, Payload} = _Reply, hixie) ->
-    Conn:send([0, Payload, 255]).
+    C:send([Prefix, Payload], Conn);
+send({C,_} = Conn, {_Type, Payload} = _Reply, hixie) ->
+    C:send([0, Payload, 255], Conn).
 
 payload_type(text) -> 1;
 payload_type(binary) -> 2.
 
-upgrade_connection(Req, Body) ->
+upgrade_connection({R,_} = Req, Body) ->
     case make_handshake(Req) of
         {Version, Response} ->
-            Req:respond(Response),
-            Conn = Req:get(connection),
+            R:respond(Response, Req),
+            Conn = R:get(connection, Req),
             ReplyChannel = fun(Reply) ->
                 ?MODULE:send(Conn, Reply, Version)
             end,
@@ -95,25 +95,27 @@ upgrade_connection(Req, Body) ->
             end,
             {Reentry, ReplyChannel};
         _ ->
-            Conn = Req:get(connection),
-            Conn:close(),
+            {R,_} = Req,
+            Conn = R:get(connection, Req),
+            {C,_} = Conn,
+            C:close(Conn),
             exit(normal)
     end.
 
-make_handshake(Req) ->
-    SecKey  = Req:get_header_value("sec-websocket-key"),
-    Sec1Key = Req:get_header_value("Sec-WebSocket-Key1"),
-    Sec2Key = Req:get_header_value("Sec-WebSocket-Key2"),
-    SubProto = Req:get_header_value("Sec-Websocket-Protocol"),
-    Origin = Req:get_header_value(origin),
+make_handshake({R,_} = Req) ->
+    SecKey  = R:get_header_value("sec-websocket-key", Req),
+    Sec1Key = R:get_header_value("Sec-WebSocket-Key1", Req),
+    Sec2Key = R:get_header_value("Sec-WebSocket-Key2", Req),
+    SubProto = R:get_header_value("Sec-Websocket-Protocol", Req),
+    Origin = R:get_header_value(origin, Req),
 
     Result =
     if SecKey =/= undefined ->
             hybi_handshake(SecKey);
        Sec1Key =/= undefined andalso Sec2Key =/= undefined ->
-            Host = Req:get_header_value("Host"),
-            Path = Req:get(path),
-            Body = Req:recv(8),
+            Host = R:get_header_value("Host", Req),
+            Path = R:get(path, Req),
+            Body = R:recv(8, Req),
             Scheme = scheme(Req),
             hixie_handshake(Scheme, Host, Path, Sec1Key, Sec2Key, Body, Origin);
        true ->
@@ -256,29 +258,29 @@ parse_hybi_frames(Conn, <<_Fin:1,
                           _/binary-unit:8>> = PartFrame, Acc) ->
     receive_more_frames(Conn, PartFrame, Acc).
 
-receive_more_frames(Conn, PartFrame, Acc) ->
-    ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, 0}, {active, once}])),
+receive_more_frames({C,_} = Conn, PartFrame, Acc) ->
+    ok = mochiweb_util:exit_if_closed(C:setopts([{packet, 0}, {active, once}], Conn)),
     receive
         {tcp_closed, _} ->
-            Conn:close(),
+            C:close(Conn),
             exit(normal);
         {ssl_closed, _} ->
-            Conn:close(),
+            C:close(Conn),
             exit(normal);
         {tcp_error, _, _} ->
-            Conn:close(),
+            C:close(Conn),
             exit(normal);
         {ssl_error, _, _} ->
-            Conn:close(),
+            C:close(Conn),
             exit(normal);
         {TcpOrSsl, _, Continuation} when (TcpOrSsl =:= tcp) orelse (TcpOrSsl =:= ssl) ->
             parse_hybi_frames(Conn, <<PartFrame/binary, Continuation/binary>>, Acc);
         _ ->
-            Conn:close(),
+            C:close(Conn),
             exit(normal)
     after
         5000 ->
-            Conn:close(),
+            C:close(Conn),
             exit(normal)
     end.
 

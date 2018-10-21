@@ -90,12 +90,12 @@ get_combined_header_value(K, {?MODULE, [_Conn, _Method, _RawPath, _Version, Head
 %%      application, eg: <code>ssl:peercert(SslSocket)</code>.
 get(connection, {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
     Conn;
-get(transport, {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
-    Conn:transport();
-get(socket, {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
-    Conn:sock();
-get(scheme, {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
-    case Conn:type() of
+get(transport, {?MODULE, [{C,_} = Conn, _Method, _RawPath, _Version, _Headers]}) ->
+    C:transport(Conn);
+get(socket, {?MODULE, [{C,_} = Conn, _Method, _RawPath, _Version, _Headers]}) ->
+    C:sock(Conn);
+get(scheme, {?MODULE, [{C,_} = Conn, _Method, _RawPath, _Version, _Headers]}) ->
+    case C:type(Conn) of
         tcp -> http;
         ssl -> https
     end;
@@ -107,8 +107,8 @@ get(version, {?MODULE, [_Conn, _Method, _RawPath, Version, _Headers]}) ->
     Version;
 get(headers, {?MODULE, [_Conn, _Method, _RawPath, _Version, Headers]}) ->
     Headers;
-get(peername, THIS = {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
-    case Conn:peername() of
+get(peername, THIS = {?MODULE, [{C,_} = Conn, _Method, _RawPath, _Version, _Headers]}) ->
+    case C:peername(Conn) of
         {ok, {Addr, Port}} ->
             {ok, {case 'x-forwarded-for'(THIS) of
                       undefined       -> Addr;
@@ -121,8 +121,8 @@ get(peername, THIS = {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) -
         {error, Reason} ->
             {error, Reason}
     end;
-get(peer, THIS = {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
-    case Conn:peername() of
+get(peer, THIS = {?MODULE, [{C,_} = Conn, _Method, _RawPath, _Version, _Headers]}) ->
+    case C:peername(Conn) of
         {ok, {Addr, _Port}} ->
             inet_parse:ntoa(
               case 'x-forwarded-for'(THIS) of
@@ -160,8 +160,8 @@ get(range, {?MODULE, [_Conn, _Method, _RawPath, _Version, _Headers]} = THIS) ->
         RawRange ->
             mochiweb_http:parse_range_request(RawRange)
     end;
-get(opts, {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
-    Conn:opts().
+get(opts, {?MODULE, [{C,_} = Conn, _Method, _RawPath, _Version, _Headers]}) ->
+    C:opts(Conn).
 
 'x-forwarded-for'(THIS) ->
     Fun = fun(Hosts) ->
@@ -173,8 +173,8 @@ get(opts, {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
 'x-remote-port'(THIS) ->
     get_proxy_header(proxy_port_header, fun(Port) -> list_to_integer(Port) end, THIS).
 
-get_proxy_header(Name, Parse, THIS = {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
-    case proplists:get_value(Name, Conn:opts()) of
+get_proxy_header(Name, Parse, THIS = {?MODULE, [{C,_} = Conn, _Method, _RawPath, _Version, _Headers]}) ->
+    case proplists:get_value(Name, C:opts(Conn)) of
         undefined -> undefined;
         Header    ->
             case get_header_value(Header, THIS) of
@@ -186,17 +186,17 @@ get_proxy_header(Name, Parse, THIS = {?MODULE, [Conn, _Method, _RawPath, _Versio
 %% @spec dump(request()) -> {mochiweb_request, [{atom(), term()}]}
 %% @doc Dump the internal representation to a "human readable" set of terms
 %%      for debugging/inspection purposes.
-dump({?MODULE, [Conn, Method, RawPath, Version, Headers]}) ->
+dump({?MODULE, [{C,_} = Conn, Method, RawPath, Version, Headers]}) ->
     {?MODULE, [{method, Method},
                {version, Version},
                {raw_path, RawPath},
-               {opts, Conn:opts()},
+               {opts, C:opts(Conn)},
                {headers, mochiweb_headers:to_list(Headers)}]}.
 
 %% @spec send(iodata(), request()) -> ok
 %% @doc Send data over the socket.
-send(Data, {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
-    case Conn:send(Data) of
+send(Data, {?MODULE, [{C,_} = Conn, _Method, _RawPath, _Version, _Headers]}) ->
+    case C:send(Data, Conn) of
         ok -> ok;
         {error, Reason} ->
             exit({shutdown, Reason})
@@ -211,8 +211,8 @@ recv(Length, {?MODULE, [_Conn, _Method, _RawPath, _Version, _Headers]}=THIS) ->
 %% @spec recv(integer(), integer(), request()) -> binary()
 %% @doc Receive Length bytes from the client as a binary, with the given
 %%      Timeout in msec.
-recv(Length, Timeout, {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
-    case Conn:recv(Length, Timeout) of
+recv(Length, Timeout, {?MODULE, [{C,_} = Conn, _Method, _RawPath, _Version, _Headers]}) ->
+    case C:recv(Length, Timeout, Conn) of
         {ok, Data} ->
             put(?SAVE_RECV, true),
             Data;
@@ -424,7 +424,7 @@ ok({ContentType, Body}, {?MODULE, [_Conn, _Method, _RawPath, _Version, _Headers]
     ok({ContentType, [], Body}, THIS);
 ok({ContentType, ResponseHeaders, Body}, {?MODULE, [_Conn, _Method, _RawPath, _Version, _Headers]}=THIS) ->
     HResponse = mochiweb_headers:make(ResponseHeaders),
-    case THIS:get(range) of
+    case ?MODULE:get(range, THIS) of
         X when (X =:= undefined orelse X =:= fail) orelse Body =:= chunked ->
             %% http://code.google.com/p/mochiweb/issues/detail?id=54
             %% Range header not supported when chunked, return 200 and provide
@@ -569,8 +569,8 @@ stream_chunked_body(MaxChunkSize, Fun, FunState,
 stream_unchunked_body(_MaxChunkSize, 0, Fun, FunState, {?MODULE, [_Conn, _Method, _RawPath, _Version, _Headers]}) ->
     Fun({0, <<>>}, FunState);
 stream_unchunked_body(MaxChunkSize, Length, Fun, FunState,
-                      {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}=THIS) when Length > 0 ->
-    {ok, Opts} = mochiweb_util:exit_if_closed(Conn:getopts([recbuf])),
+                      {?MODULE, [{C,_} = Conn, _Method, _RawPath, _Version, _Headers]}=THIS) when Length > 0 ->
+    {ok, Opts} = mochiweb_util:exit_if_closed(C:getopts([recbuf],Conn)),
     RecBuf = case mochilists:get_value(recbuf, Opts, ?RECBUF_SIZE) of
         undefined -> %os controlled buffer size
             MaxChunkSize;
@@ -584,11 +584,11 @@ stream_unchunked_body(MaxChunkSize, Length, Fun, FunState,
 
 %% @spec read_chunk_length(request()) -> integer()
 %% @doc Read the length of the next HTTP chunk.
-read_chunk_length({?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
-    ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, line}])),
-    case Conn:recv(0, ?IDLE_TIMEOUT) of
+read_chunk_length({?MODULE, [{C1,_} = Conn, _Method, _RawPath, _Version, _Headers]}) ->
+    ok = mochiweb_util:exit_if_closed(C1:setopts([{packet, line}], Conn)),
+    case C1:recv(0, ?IDLE_TIMEOUT, Conn) of
         {ok, Header} ->
-            ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, raw}])),
+            ok = mochiweb_util:exit_if_closed(C1:setopts([{packet, raw}], Conn)),
             Splitter = fun (C) ->
                                C =/= $\r andalso C =/= $\n andalso C =/= $
                        end,
@@ -601,10 +601,10 @@ read_chunk_length({?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
 %% @spec read_chunk(integer(), request()) -> Chunk::binary() | [Footer::binary()]
 %% @doc Read in a HTTP chunk of the given length. If Length is 0, then read the
 %%      HTTP footers (as a list of binaries, since they're nominal).
-read_chunk(0, {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
-    ok = mochiweb_util:exit_if_closed(Conn:setopts([{packet, line}])),
+read_chunk(0, {?MODULE, [{C,_} = Conn, _Method, _RawPath, _Version, _Headers]}) ->
+    ok = mochiweb_util:exit_if_closed(C:setopts([{packet, line}], Conn)),
     F = fun (F1, Acc) ->
-                case Conn:recv(0, ?IDLE_TIMEOUT) of
+                case C:recv(0, ?IDLE_TIMEOUT, Conn) of
                     {ok, <<"\r\n">>} ->
                         Acc;
                     {ok, Footer} ->
@@ -614,11 +614,11 @@ read_chunk(0, {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
                 end
         end,
     Footers = F(F, []),
-    ok = Conn:setopts([{packet, raw}]),
+    ok = C:setopts([{packet, raw}], Conn),
     put(?SAVE_RECV, true),
     Footers;
-read_chunk(Length, {?MODULE, [Conn, _Method, _RawPath, _Version, _Headers]}) ->
-    case mochiweb_util:exit_if_closed(Conn:recv(2 + Length, ?IDLE_TIMEOUT)) of
+read_chunk(Length, {?MODULE, [{C,_} = Conn, _Method, _RawPath, _Version, _Headers]}) ->
+    case mochiweb_util:exit_if_closed(C:recv(2 + Length, ?IDLE_TIMEOUT, Conn)) of
         {ok, <<Chunk:Length/binary, "\r\n">>} ->
             Chunk;
         _ ->
