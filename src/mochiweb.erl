@@ -29,7 +29,7 @@
 
 -export([start_http/2, start_http/3, start_http/4, stop_http/1, stop_http/2, restart_http/1, restart_http/2]).
 
--export([new_request/1, new_response/1]).
+-export([new_request/1, new_response/1, child_spec/4]).
 
 -define(SOCKET_OPTS, [
     binary,
@@ -42,6 +42,29 @@
     {exit_on_close, false},
     {nodelay, false}
 ]).
+
+-ifndef(RECBUF_SIZE).
+-define(RECBUF_SIZE, 8192).
+-endif.
+
+-ifndef(SOCKET_OPTS).
+-define(SOCKET_OPTS, [
+    binary,
+    {reuseaddr, true},
+    {packet, raw},
+    {backlog, 1024},
+    {recbuf, ?RECBUF_SIZE},
+    {send_timeout, 15000},
+    {send_timeout_close, true},
+    {exit_on_close, false},
+    {nodelay, false}
+]).
+-endif.
+
+child_spec(Protocol, ListenOn, Options, Args) ->
+        SockOpts = merge_opts(?SOCKET_OPTS, proplists:get_value(sockopts, Options, [])),
+        MFArgs = {mochiweb_http, start_link, Args},
+        esockd_sup:child_spec(Protocol, ListenOn, SockOpts, MFArgs).
 
 %% @doc Start HTTP Listener
 -spec(start_http(esockd:listen_on(), esockd:mfargs()) -> {ok, pid()}).
