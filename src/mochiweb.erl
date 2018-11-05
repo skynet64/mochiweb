@@ -29,7 +29,36 @@
 
 -export([start_http/2, start_http/3, start_http/4, stop_http/1, stop_http/2, restart_http/1, restart_http/2]).
 
--export([new_request/1, new_response/1, child_spec/4]).
+-export([new_request/1, new_response/1, child_spec/4, handle/2]).
+
+dispatch(Path) ->
+    case Path of
+        [] -> application:get_env(?MODULE, main_page, "index.htm");
+        _ -> Path
+    end.
+
+handle(Req, DocRoot) ->
+    io:format("~s ~s~n", [Req:get(method), Req:get(path)]),
+    try case Req:get(method) of
+        'GET' ->
+            "/" ++ Path = Req:get(path),
+            RealPath = dispatch(Path),
+            Req:serve_file(RealPath, DocRoot);
+        'POST' ->
+            Req:not_found();
+        _Method ->
+            Req:respond({501, [], []})
+    end
+    catch
+    Type:What ->
+        Report = ["web request failed",
+                {path, Req:get(path)},
+                {type, Type}, {what, What},
+                {trace, erlang:get_stacktrace()}],
+        error_logger:error_report(Report),
+        Req:respond({500, [{"Content-Type", "text/plain"}],
+                    "request failed, sorry\n"})
+    end.
 
 -define(SOCKET_OPTS, [
     binary,
