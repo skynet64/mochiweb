@@ -38,26 +38,26 @@ dispatch(Path) ->
     end.
 
 handle(Req, DocRoot) ->
-    io:format("~s ~s~n", [Req:get(method), Req:get(path)]),
-    try case Req:get(method) of
+    {R,_} = Req,
+    try case R:get(method, Req) of
         'GET' ->
-            "/" ++ Path = Req:get(path),
+            "/" ++ Path = R:get(path, Req),
             RealPath = dispatch(Path),
-            Req:serve_file(RealPath, DocRoot);
+            R:serve_file(RealPath, DocRoot, Req);
         'POST' ->
-            Req:not_found();
+            R:not_found(Req);
         _Method ->
-            Req:respond({501, [], []})
+            R:respond({501, [], []}, Req)
     end
     catch
     Type:What ->
         Report = ["web request failed",
-                {path, Req:get(path)},
+                {path, R:get(path,Req)},
                 {type, Type}, {what, What},
                 {trace, erlang:get_stacktrace()}],
         error_logger:error_report(Report),
-        Req:respond({500, [{"Content-Type", "text/plain"}],
-                    "request failed, sorry\n"})
+        R:respond({500, [{"Content-Type", "text/plain"}],
+                    "request failed, sorry\n"},Req)
     end.
 
 -define(SOCKET_OPTS, [
